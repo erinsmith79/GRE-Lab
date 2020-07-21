@@ -1,4 +1,4 @@
-saccer1<-read.delim(file.choose("SacCer1.fa"))
+
 setwd("/Users/erinsmith/researchlab")
 datafile<-read.delim(file.choose("nucdata3.txt"))
 colnames(datafile)
@@ -39,7 +39,6 @@ plot(consensusdata$ends, consensusdata$ByPos_MIndex)
 
 consensusdata<-vmatchPattern("CACGTG",saccergenome,max.mismatch=0,min.mismatch=0,with.indels=FALSE,fixed=TRUE,algorithm="auto")
 SCprom<-promoters(SacCerGFF)
-colnames(mcols(consensusdata))
 promoterconsensusdata<-vmatchPattern("CACGTG",SCprom,max.mismatch=0,min.mismatch=0,with.indels=FALSE,fixed=TRUE,algorithm="auto")
 plot(consensusdata$MIndex, consensusdata$ends)
 
