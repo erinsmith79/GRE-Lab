@@ -35,10 +35,11 @@ BiocManager::install("tracklayer")
 library(Biostrings)
 
 saccergenome<-import.2bit("sacCer1.2bit")
-plot(consensusdata$ends, consensusdata$ByPos_MIndex)
+
 
 consensusdata<-vmatchPattern("CACGTG",saccergenome,max.mismatch=0,min.mismatch=0,with.indels=FALSE,fixed=TRUE,algorithm="auto")
 SCprom<-promoters(SacCerGFF)
 promoterconsensusdata<-vmatchPattern("CACGTG",SCprom,max.mismatch=0,min.mismatch=0,with.indels=FALSE,fixed=TRUE,algorithm="auto")
 plot(consensusdata$MIndex, consensusdata$ends)
+plot(consensusdata$ends, consensusdata$ByPos_MIndex)
 
