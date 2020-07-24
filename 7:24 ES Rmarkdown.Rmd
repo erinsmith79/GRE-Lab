@@ -1,0 +1,70 @@
+---
+title: "7/22SacCer.Rmd"
+author: "Erin Smith"
+date: "7/22/2020"
+output: 
+  html_document:
+    toc: yes
+---
+# liftOver() from sacCer1 WIG (nucleosome occupancy data) to sacCer3 genome
+In order to merge the two genome data sets so I can work with sacCer3 version in the future:
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("/Users/erinsmith/researchlab") 
+?`liftOver,GenomicRanges,Chain-method`
+?import.chain
+wig_path<-file.path("/Users/erinsmith/researchlab", "nucdata.wig")
+nucdatafinal<-import(con=wig_path, seqinfo=seqinfo(genome="sc"))
+seqnames(nucdatafinal)
+ranges(nucdatafinal)
+colnames(nucdatafinal)
+chain<-import.chain("/Users/erinsmith/researchlab/sacCer1ToSacCer3.over.chain")
+merged<-as.data.frame(liftOver(nucdatafinal,chain))
+# Converting SacCer3 with nucleosome occupancy data to a GRanges object
+mergeG<-GRanges(merged)
+head(mergeG)
+
+```
+# vmatchPattern() of merged dataframe to find consensus motifs and store start position, end position, and chromosome
+How to add motif to each data point? 
+Search negative strand for 1 bp off motifs?
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(Biostrings)
+?vmatchPattern
+saccer3genome<-import("sacCer3.fa",format="FASTA")
+consensusdata<-vmatchPattern("CACGTG",saccer3genome,max.mismatch=0,min.mismatch=0,with.indels=FALSE,fixed=TRUE,algorithm="auto")
+head(consensusdata)
+mismatchconsensusdata<-vmatchPattern("CACGTG",saccer3genome,max.mismatch=1,min.mismatch=1,with.indels=FALSE,fixed=TRUE,algorithm="auto")
+length(consensusdata)
+
+```
+
+# Merge chromosome tables of consensus data to one large table of all chromosomes
+Going to retry on this data set: ignore merging
+```{r}
+mergedCD<-merge(consensusdata$chrI, consensusdata$chrII, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrIII, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrIV, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrV, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrVI, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrVII, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrVIII, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrIX, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrX, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrXI, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrXII, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrXIII, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrXIV, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrXV, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrXVI, all=TRUE)
+head(mergedCD)
+mergedCD["motif"]<-"CACGTG"
+
+```
+
+# Try searching for consensusdata in another way to get a final GRanges product & add motif sequence to data
+```{r}
+matchPattern("CACGTG", saccer3genome, max.mismatch = 0,min.mismatch = 0,with.indels=FALSE,fixed=TRUE,algorithm="auto")
+
+
