@@ -1,0 +1,140 @@
+---
+title: "7/22SacCer.Rmd"
+author: "Erin Smith"
+date: "7/22/2020"
+output: 
+  html_document:
+    toc: yes
+---
+# liftOver() from sacCer1 WIG (nucleosome occupancy data) to sacCer3 genome
+In order to merge the two genome data sets so I can work with sacCer3 version in the future:
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("/Users/erinsmith/researchlab") 
+?`liftOver,GenomicRanges,Chain-method`
+?import.chain
+wig_path<-file.path("/Users/erinsmith/researchlab", "nucdata.wig")
+nucdatafinal<-import(con=wig_path, seqinfo=NULL)
+
+chain<-import.chain("/Users/erinsmith/researchlab/sacCer1ToSacCer3.over.chain")
+merged<-as.data.frame(liftOver(nucdatafinal,chain))
+# Converting SacCer3 with nucleosome occupancy data to a GRanges object
+mergeG<-GRanges(merged)
+head(mergeG)
+
+```
+# vmatchPattern() of merged dataframe to find consensus motifs and store start position, end position, and chromosome
+How to add motif to each data point? 
+Search negative strand for 1 bp off motifs?
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(Biostrings)
+?vmatchPattern
+saccer3genome<-import("sacCer3.fa",format="FASTA")
+consensusdata<-vmatchPattern("CACGTG",saccer3genome,max.mismatch=0,min.mismatch=0,with.indels=FALSE,fixed=TRUE,algorithm="auto")
+head(consensusdata)
+mismatchconsensusdata<-vmatchPattern("CACGTG",saccer3genome,max.mismatch=1,min.mismatch=1,with.indels=FALSE,fixed=TRUE,algorithm="auto")
+length(consensusdata)
+
+```
+
+# Merge chromosome tables of consensus data to one large table of all chromosomes
+Going to retry on this data set: ignore merging
+```{r}
+mergedCD<-merge(consensusdata$chrI, consensusdata$chrII, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrIII, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrIV, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrV, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrVI, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrVII, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrVIII, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrIX, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrX, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrXI, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrXII, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrXIII, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrXIV, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrXV, all=TRUE)
+mergedCD<-merge(mergedCD, consensusdata$chrXVI, all=TRUE)
+head(mergedCD)
+mergedCD["motif"]<-"CACGTG"
+
+```
+
+# Try searching for consensusdata in another way to get a final GRanges product & add motif sequence to data, adding consensus data to nucleosome occupancy GRanges
+```{r}
+CACGTGhit<-matchPattern("CACGTG", saccer3genome, max.mismatch = 0,min.mismatch = 0,with.indels=FALSE,fixed=TRUE,algorithm="auto")
+library(Biostrings)
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("universalmotif")
+library(universalmotif)
+?scan_sequences
+motif=create_motif("CACGTG")
+CACGTGhit<-scan_sequences(motif,saccer3genome, threshold=0,RC=FALSE)
+head(CACGTGhit)
+CACGTGhits<-makeGRangesFromDataFrame(CACGTGhit,keep.extra.columns=TRUE,ignore.strand=FALSE,seqnames.field=c("sequence", "seqname",
+                                          "chromosome", "chrom",
+                                          "chr", "chromosome_name",
+                                          "seqid"))
+head(CACGTGhits)
+final<-c(CACGTGhits,mergeG)
+head(mergeG)
+```
+
+# Plotting data
+```{r}
+ plotting<-as.data.frame(rbind(as.data.frame(mergeG_list),as.data.frame(CACGTGhits_list)))
+# ggplot(data=plotting,aes(xmin=start,xmax=end,ymin=0,ymax=1))+geom_rect(aes(fill=motif),alpha=0.4)
+slotNames(mergeG)
+names(mergeG)
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("ggfortify")
+install.packages("tidyverse")
+library("ggbio")
+library("ggfortify")
+install.packages("ggplot2")
+library("ggplot2")
+library(ggfortify)
+chrIdf<-as.data.frame(mergeG_list$chrI)
+fortify(chrIdf)
+#function to plot nuc occupancy
+plot_nuc_occup<-function(chrom="chrI", startpos=1, endpos=1000) {
+  df<-as.data.frame(mergeG_list$chrom)
+  df$start<-as.numeric(df$start)
+  df$end<-as.numeric(df$end)
+  positionspecif<-subset(df,start>=startpos & start<=endpos,)
+  positionspecif$score<-as.numeric(positionspecif$score)
+  fortify(positionspecif)
+  motifdf<-as.data.frame(CACGTGhits_list$chrom)
+  motifdf$start<-as.numeric(motifdf$start)
+  motifdf$end<-as.numeric(motifdf$end)
+  motif_posi<-subset(motifdf,start>=startpos & start<=endpos,)
+  ggplot(data=positionspecif,mapping=aes(x=start,y=score))+geom_point(alpha=1,size=1)+geom_line()+ylim(0,max(positionspecif$score))#geom_polygon(mapping=aes(x=start,y=0),data=motif_posi)
+
+#here is where it works to plot outside the function
+plot_nuc_occup(chrom="chrII",startpos=800,endpos=4000)
+qplot(start, score,data=chrIdf)+geom_point()
+df<-as.data.frame(mergeG_list$chrII)
+df$start<-as.numeric(df$start)
+df$end<-as.numeric(df$end)
+positionspecif<-subset(df,start>=800 & start<=4000,)
+fortify(positionspecif)
+positionspecif$score<-as.numeric(positionspecif$score)
+motifdf<-as.data.frame(CACGTGhits_list$chrII)
+motifdf$start<-as.numeric(motifdf$start)
+motifdf$end<-as.numeric(motifdf$end)
+motif_posi<-subset(motifdf,start>=800 & start<=4000,)
+ggplot(data=positionspecif,mapping=aes(x=start,y=score))+geom_line()+xlim(800,4000)#+geom_polygon(mapping=aes(x=start:end,y=0),data=motif_posi)
+
+mergeG_list<-split(mergeG,seqnames(mergeG))
+CACGTGhits_list<-split(CACGTGhits,seqnames(CACGTGhits))
+length(CACGTGhits_list)
+length(mergeG_list)
+?after_stat()
+qplot(mergeG_list$chrI,mergeG_list$score)
+```
