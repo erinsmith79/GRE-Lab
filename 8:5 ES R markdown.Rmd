@@ -1,0 +1,179 @@
+---
+title: "7/22SacCer.Rmd"
+author: "Erin Smith"
+date: "7/22/2020"
+output: 
+  html_document:
+    toc: yes
+---
+# liftOver() from sacCer1 WIG (nucleosome occupancy data) to sacCer3 genome
+In order to merge the two genome data sets so I can work with sacCer3 version in the future:
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("/Users/erinsmith/researchlab") 
+?`liftOver,GenomicRanges,Chain-method`
+?import.chain
+wig_path<-file.path("/Users/erinsmith/researchlab", "nucdata.wig")
+nucdatafinal<-import(con=wig_path, seqinfo=NULL)
+
+chain<-import.chain("/Users/erinsmith/researchlab/sacCer1ToSacCer3.over.chain")
+merged<-as.data.frame(liftOver(nucdatafinal,chain))
+# Converting SacCer3 with nucleosome occupancy data to a GRanges object
+mergeG<-GRanges(merged)
+head(mergeG)
+
+```
+# vmatchPattern() of merged dataframe to find consensus motifs and store start position, end position, and chromosome
+How to add motif to each data point? 
+Search negative strand for 1 bp off motifs?
+```{r}
+knitr::opts_chunk$set(echo = TRUE)
+library(Biostrings)
+?vmatchPattern
+saccer3genome<-import("sacCer3.fa",format="FASTA")
+consensusdata<-vmatchPattern("CACGTG",saccer3genome,max.mismatch=0,min.mismatch=0,with.indels=FALSE,fixed=TRUE,algorithm="auto")
+head(consensusdata)
+mismatchconsensusdata<-vmatchPattern("CACGTG",saccer3genome,max.mismatch=1,min.mismatch=1,with.indels=FALSE,fixed=TRUE,algorithm="auto")
+length(consensusdata)
+
+```
+
+# Get consensus motif locations via scan_sequence() and get 1 bp off motif locations via vmatchPattern()
+```{r}
+# Package needed for motif searching functions
+library(Biostrings)
+
+# Getting CACGTG motif locations
+CACGTGhit<-matchPattern("CACGTG", saccer3genome, max.mismatch = 0,min.mismatch = 0,with.indels=FALSE,fixed=TRUE,algorithm="auto")
+
+# Getting 1 bp off motif locations
+head(saccer3genome)
+mismatchhit<-vmatchPattern("CACGTG",saccer3genome,max.mismatch=1,min.mismatch=1,with.indels=FALSE,fixed=TRUE,algorithm="auto")
+head(mismatchhit)
+mismatchhit<-as.data.frame(mismatchhit)
+mismatchhit<-makeGRangesFromDataFrame(mismatchhit,keep.extra.columns=FALSE,ignore.strand=FALSE,seqinfo=NULL,seqnames.field="group",start.field="start",end.field="end")
+
+# Finish with GRangesList that we can later subset by chromosome
+mismatchhitlist<-split(mismatchhit,seqnames(mismatch))
+
+# Using this package to add motif sequence as metadata
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("universalmotif")
+library(universalmotif)
+motif=create_motif("CACGTG")
+CACGTGhit<-scan_sequences(motif,saccer3genome, threshold=0,RC=FALSE)
+CACGTGhits<-makeGRangesFromDataFrame(CACGTGhit,keep.extra.columns=TRUE,ignore.strand=FALSE,seqnames.field=c("sequence", "seqname",
+                                          "chromosome", "chrom",
+                                          "chr", "chromosome_name",
+                                          "seqid"))
+
+# Finishing with GRangesList that we can later split by chromosome
+CACGTGhits_list<-split(CACGTGhits,seqnames(CACGTGhits))
+
+```
+
+# Plotting data
+```{r}
+# Using ggfortify to allow me to plot type "numeric"
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("ggfortify")
+install.packages("ggplot2")
+library("ggbio")
+library("ggfortify")
+library("ggplot2")
+chrIdf<-as.data.frame(mergeG_list$chrI)
+fortify(chrIdf)
+
+# 1st attempt at function to plot nuc occupancy
+plot_nuc_occup<-function(chrom="chrI", startpos=1, endpos=1000) {
+  df<-as.data.frame(mergeG_list$chrom)
+  df$start<-as.numeric(df$start)
+  df$end<-as.numeric(df$end)
+  positionspecif<-subset(df,start>=startpos & start<=endpos,)
+  positionspecif$score<-as.numeric(positionspecif$score)
+  fortify(positionspecif)
+  motifdf<-as.data.frame(CACGTGhits_list$chrom)
+  motifdf$start<-as.numeric(motifdf$start)
+  motifdf$end<-as.numeric(motifdf$end)
+  motif_posi<-subset(motifdf,start>=startpos & start<=endpos,)
+  ggplot(data=positionspecif,mapping=aes(x=start,y=score))+geom_point(alpha=1,size=1)+geom_line()+ylim(0,max(positionspecif$score))#geom_polygon(mapping=aes(x=start,y=0),data=motif_posi)
+
+#here is where it works to plot outside the function
+plot_nuc_occup(chrom="chrII",startpos=800,endpos=4000)
+qplot(start, score,data=chrIdf)+geom_point()
+df<-as.data.frame(mergeG_list$chrII)
+df$start<-as.numeric(df$start)
+df$end<-as.numeric(df$end)
+positionspecif<-subset(df,start>=800 & start<=4000,)
+fortify(positionspecif)
+positionspecif$score<-as.numeric(positionspecif$score)
+motifdf<-as.data.frame(CACGTGhits_list$chrII)
+motifdf$start<-as.numeric(motifdf$start)
+motifdf$end<-as.numeric(motifdf$end)
+motif_posi<-subset(motifdf,start>=800 & start<=4000,)
+ggplot(data=positionspecif,mapping=aes(x=start,y=score))+geom_line()+xlim(800,4000)#+geom_polygon(mapping=aes(x=start:end,y=0),data=motif_posi)
+
+# Splitting nuc data list by chromosome
+mergeG_list<-split(mergeG,seqnames(mergeG))
+
+
+
+# Trying this out with ChromII, 200-800 (function didn't execute)
+cacgtgII<-GRanges(CACGTGhits_list$chrII)
+head(cacgtgII)
+motifdat<-cacgtgII[seqnames(cacgtgII)=="chrII"& start(cacgtgII)>=200 & end(cacgtgII)<=800 & ]
+
+# 2nd attempt at function to plot nuc occupancy
+plotnucocc<-function(chrom="chrI",startpos="start",endpos="end"){
+  gr<-GRanges(mergeG_list$chrom)
+  plotthis<-gr[seqnames(gr)==chrom & start(gr)>=startpos & end(gr)<=endpos & score(gr)]
+  plotthis<-as.data.frame(plotthis,col.names=c("seqnames","ranges","strand","group","groupname","score"))
+  consensus<-GRanges(CACGTGhits_list$chrom)
+  consensus<-as.data.frame(consensus)
+  motif_position<-subset(consensus, start>=startpos & end<endpos,)
+  mismatch<-as.data.frame(mismatchhitlist$chrom)
+  mismatch<-subset(mismatch, start>=startpos & end<=endpos,)
+  
+  ggplot(data=plotthis,mapping=aes(x=start,y=score))+geom_line()+xlab("position")+ylab("nucleosome occupancy value")+ggtitle("Nucleosome Occupancy Score")+annotate("point",x=motif_position$start,y=0,shape=20, colour="blue",size=3,fill="blue")+annotate("point", x=mismatch$start,y=0,shape=20,colour="light blue",size=3,fill="light blue")+theme_bw()+theme_light()
+}
+
+
+plotnucocc(chrom="chrI",start=5,end=1000)
+
+
+# Trying with ChrI, function didn't execute but works on its own
+gr <- GRanges(mergeG_list$chrI)
+plotthis <- gr[seqnames(gr)=="chrI" & start(gr)>=5 & end(gr)<=1000 & score(gr)]
+plotthis<-as.data.frame(plotthis,col.names=c("seqnames","ranges","strand","group","groupname","score"))
+cacgtgI<-GRanges(CACGTGhits_list$chrI)
+cacgtgI<-as.data.frame(cacgtgI)
+motif_posiI<-subset(cacgtgI, start>=5 & end<=1000)
+head(mismatchhitlist)
+head(mismatchhitlist$'1')
+mismatchhitI<-as.data.frame(mismatchhitlist$'1') 
+misMotifI<-subset(mismatchhitI, start>=5 & end<=1000)
+head(misMotifI)
+ggplot(data=plotthis,mapping=aes(x=start,y=score))+
+  geom_line()+xlab("position")+ylab("nucleosome occupancy value")+ggtitle("Nucleosome Occupancy Score")+
+  annotate("point",x=motif_posiI$start,y=0,shape=20, colour="blue",size=3,fill="blue")+annotate("point", x=misMotifI$start,y=0,shape=20,colour="light blue",size=3,fill="light blue")+theme_bw()+theme_light()+scale_colour_manual(values=c("blue","light blue"))
+
+
+# Trying again with CG gene
+gr<-GRanges(mergeG_list$chrXIII)
+plotthis<-gr[seqnames(gr)=="chrXIII" & start(gr)>=25610 & end(gr)<=26608 & score(gr)]
+plotthis<-as.data.frame(plotthis,col.names=c("seqnames","ranges","strand","group","groupname","score"))
+cacgtgXIII<-GRanges(CACGTGhits_list$chrXIII)
+cacgtgXIII<-as.data.frame(cacgtgXIII)
+motif_posiXIII<-subset(cacgtgXIII, start>=25610 & end<=16608)
+head(mismatchhitlist)
+head(mismatchhitlist$'13')
+mismatchhitXIII<-as.data.frame(mismatchhitlist$'13') 
+misMotifXIII<-subset(mismatchhitXIII, start>=25610 & end<=26608)
+head(misMotifXIII)
+ggplot(data=plotthis,mapping=aes(x=start,y=score))+geom_line()+xlab("position")+ylab("nucleosome occupancy value")+ggtitle("Nucleosome Occupancy Score")+annotate("point",x=motif_posiI$start,y=0,shape=20, colour="blue",size=3,fill="blue")+annotate("point", x=misMotifI$start,y=0,shape=20,colour="light blue",size=3,fill="light blue")+theme_bw()+theme_light()+scale_colour_manual(values=c("blue","light blue"))
+
+```
